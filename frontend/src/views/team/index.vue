@@ -63,6 +63,39 @@
       </tbody>
     </table>
 
+    <section class="drill-section">
+      <h3>耗材领用清单</h3>
+      <p class="page-desc">由客舱清洁作业按航班挂账汇总而来，与客舱清洁页班组完成视图是同一份数据，不重复记账。</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>保障班组</th>
+            <th>在岗人数</th>
+            <th>涉及航班</th>
+            <th>耗材领用合计（件）</th>
+            <th>人均领用（件/人）</th>
+            <th>人岗匹配提示</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in materialIssues" :key="item.team" :class="{ 'row-warn': item.warning }">
+            <td>{{ item.team }}</td>
+            <td>{{ item.onDuty ?? '—' }}</td>
+            <td>{{ item.flights.join('、') || '—' }}</td>
+            <td>{{ item.materialTotal }}</td>
+            <td>{{ item.perCapita === null ? '—' : item.perCapita.toFixed(1) }}</td>
+            <td>
+              <span v-if="item.warning" class="warn-text">⚠ {{ item.warning }}</span>
+              <span v-else>正常</span>
+            </td>
+          </tr>
+          <tr v-if="!materialIssues.length">
+            <td colspan="6" class="empty-state">暂无耗材领用记录</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条保障班组记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -73,6 +106,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
+import { materialIssueByTeam, type MaterialIssueRow } from '@/api/cabin-service'
 import {
   downloadEntries,
   listEntries,
@@ -91,6 +125,7 @@ const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
+const materialIssues = ref<MaterialIssueRow[]>([])
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
@@ -128,6 +163,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    materialIssues.value = materialIssueByTeam()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '保障班组列表读取失败'
   }

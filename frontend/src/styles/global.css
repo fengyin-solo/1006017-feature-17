@@ -35,3 +35,15 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .error-text { color: #b42318; }
 .status-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
 .legend-item { background: #eef2f7; border-radius: 999px; padding: 2px 10px; }
+.view-switch { display: flex; gap: 8px; margin-bottom: 12px; }
+.view-switch .btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.filter-item select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.checkbox-item { display: flex; align-items: center; gap: 6px; }
+.checkbox-item span { font-size: 13px; color: #1f2937; }
+.subtotal-row td { font-weight: 600; background: #f1f5f9; }
+.drill-section { margin-top: 16px; }
+.drill-section h3 { font-size: 14px; margin: 0 0 8px; }
+.row-warn td { background: #fff7ed; }
+.warn-text { color: #b42318; }
+.progress-form { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+.progress-form input { width: 64px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; }
