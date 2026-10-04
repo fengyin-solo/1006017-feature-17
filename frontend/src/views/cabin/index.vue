@@ -18,6 +18,101 @@
       </article>
     </div>
 
+    <section class="team-view">
+      <h3 class="section-title">班组完成视图</h3>
+      <p class="section-desc">按清洁班组分组汇总，项数、用水量、耗材领用与下方作业记录同源；点击航班可下钻明细。</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>清洁班组</th>
+            <th>作业架次</th>
+            <th>作业项数</th>
+            <th>用水量</th>
+            <th>耗材领用</th>
+            <th>涉及航班（点击下钻）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="team in teamView"
+            :key="team.team"
+            :class="{ 'row-active': team.team === drillTeam }"
+          >
+            <td>{{ team.team }}</td>
+            <td>{{ team.jobs }}</td>
+            <td>{{ team.itemTotal }}</td>
+            <td>{{ team.waterTotal }}</td>
+            <td>{{ team.supplyTotal }}</td>
+            <td class="flight-cell">
+              <button
+                v-for="flight in team.flights"
+                :key="flight"
+                class="link flight-chip"
+                type="button"
+                @click="openDrill(team.team, flight)"
+              >
+                {{ flight }}
+              </button>
+            </td>
+          </tr>
+          <tr v-if="teamView.length" class="total-row">
+            <td>合计</td>
+            <td>{{ teamTotals.jobs }}</td>
+            <td>{{ teamTotals.itemTotal }}</td>
+            <td>{{ teamTotals.waterTotal }}</td>
+            <td>{{ teamTotals.supplyTotal }}</td>
+            <td>—</td>
+          </tr>
+          <tr v-if="!teamView.length">
+            <td colspan="6" class="empty-state">暂无清洁作业，班组视图待数据生成</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div v-if="drill" class="drill-panel">
+        <header class="drill-head">
+          <h4 class="drill-title">{{ drill.team }} · {{ drill.flight }} 作业明细</h4>
+          <label class="drill-switch">
+            <span>切换航班</span>
+            <select :value="drill.flight" @change="switchFlight">
+              <option v-for="flight in drillTeamFlights" :key="flight" :value="flight">
+                {{ flight }}
+              </option>
+            </select>
+          </label>
+        </header>
+        <p v-if="drill.supportTeam" class="drill-note">
+          保障班组：{{ drill.supportTeam }}，本航班耗材领用 {{ drill.supply }} 套，已计入该班组领用清单。
+        </p>
+        <p v-else class="drill-note warn-text">该航班未登记保障班组，耗材暂未挂接。</p>
+        <p v-if="drill.issue?.warning" class="warn-text">⚠ {{ drill.issue.warning }}</p>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>作业编号</th>
+              <th>航班号</th>
+              <th>作业项数</th>
+              <th>已完成项数</th>
+              <th>用水量</th>
+              <th>耗材领用</th>
+              <th>当前状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="job in drill.jobs" :key="String(job.id)">
+              <td>{{ job['作业编号'] }}</td>
+              <td>{{ job['航班号'] }}</td>
+              <td>{{ job['作业项数'] }}</td>
+              <td>{{ job['已完成项数'] }}</td>
+              <td>{{ job['用水量'] }}</td>
+              <td>{{ job['耗材领用'] }}</td>
+              <td>{{ job.status }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <p class="status-legend">
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
@@ -55,6 +150,7 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="recordProgress(row)">补记完成项数</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -65,6 +161,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条客舱清洁记录</span>
+      <span v-if="noticeMessage" class="ok-text">{{ noticeMessage }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -74,29 +171,56 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  cabinFlightDetail,
+  cabinTeamSummary,
   downloadEntries,
   listEntries,
   moduleMeta,
+  recordCabinProgress,
   runAction as applyAction,
 } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import type { CabinFlightDetail, CabinTeamSummary, EntryRow } from '@/data/types'
 
 const meta = moduleMeta('cabin')
-const columns = ["作业编号", "航班号", "清洁班组", "作业项数", "用水量", "耗材领用", "质检人员", "作业状态"]
+const columns = ["作业编号", "航班号", "清洁班组", "作业项数", "已完成项数", "用水量", "耗材领用", "质检人员"]
 const actions = ["开始清洁", "提交质检", "确认完成"]
 const statuses = ["待清洁", "清洁中", "待质检", "已完成"]
-const stats = [{"label": "今日清洁架次", "value": 0}, {"label": "清洁中作业", "value": 0}, {"label": "待质检作业", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+
+const teamView = ref<CabinTeamSummary[]>([])
+const drillTeam = ref('')
+const drill = ref<CabinFlightDetail | null>(null)
+
+const stats = computed(() => [
+  { label: '今日清洁架次', value: rows.value.length },
+  { label: '清洁中作业', value: rows.value.filter((row) => String(row.status) === '清洁中').length },
+  { label: '待质检作业', value: rows.value.filter((row) => String(row.status) === '待质检').length },
+])
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
+)
+const teamTotals = computed(() =>
+  teamView.value.reduce(
+    (sum, team) => ({
+      jobs: sum.jobs + team.jobs,
+      itemTotal: sum.itemTotal + team.itemTotal,
+      waterTotal: sum.waterTotal + team.waterTotal,
+      supplyTotal: sum.supplyTotal + team.supplyTotal,
+    }),
+    { jobs: 0, itemTotal: 0, waterTotal: 0, supplyTotal: 0 },
+  ),
+)
+const drillTeamFlights = computed(
+  () => teamView.value.find((team) => team.team === drillTeam.value)?.flights ?? [],
 )
 
 function resetFilters() {
@@ -113,21 +237,45 @@ function openCreate() {
 }
 
 function runAction(action: string, row: EntryRow) {
-  errorMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
-  if (!result.ok) {
-    errorMessage.value = result.message
+  showResult(result)
+}
+
+function recordProgress(row: EntryRow) {
+  const result = recordCabinProgress(Number(row.id))
+  showResult(result)
+}
+
+function showResult(result: { ok: boolean; message: string }) {
+  if (result.ok) {
+    reload()
+    noticeMessage.value = result.message
     return
   }
-  reload()
+  errorMessage.value = result.message
+}
+
+function openDrill(team: string, flight: string) {
+  drillTeam.value = team
+  drill.value = cabinFlightDetail(team, flight)
+}
+
+function switchFlight(event: Event) {
+  const flight = (event.target as HTMLSelectElement).value
+  openDrill(drillTeam.value, flight)
 }
 
 function reload() {
   errorMessage.value = ''
+  noticeMessage.value = ''
   try {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    teamView.value = cabinTeamSummary()
+    if (drill.value) {
+      drill.value = cabinFlightDetail(drill.value.team, drill.value.flight)
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '客舱清洁列表读取失败'
   }

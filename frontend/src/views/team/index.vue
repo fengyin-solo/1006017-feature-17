@@ -63,6 +63,45 @@
       </tbody>
     </table>
 
+    <section class="supply-view">
+      <h3 class="section-title">耗材领用清单</h3>
+      <p class="section-desc">
+        客舱清洁作业的耗材领用按航班挂接到保障班组，与清洁班组完成视图同源汇总，每人定额
+        {{ supplyQuota }} 套。
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>保障班组</th>
+            <th>在岗人数</th>
+            <th>耗材领用合计</th>
+            <th>涉及航班（领用量）</th>
+            <th>核对结果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="issue in supplyIssues" :key="issue.team">
+            <td>{{ issue.team }}</td>
+            <td>{{ issue.headcount ?? '—' }}</td>
+            <td>{{ issue.supplyTotal }}</td>
+            <td>
+              <span v-if="issue.flights.length">
+                {{ issue.flights.map((item) => `${item.flight}（${item.supply}）`).join('、') }}
+              </span>
+              <span v-else>—</span>
+            </td>
+            <td>
+              <span v-if="issue.warning" class="warn-text">⚠ {{ issue.warning }}</span>
+              <span v-else class="ok-text">与在岗人数匹配</span>
+            </td>
+          </tr>
+          <tr v-if="!supplyIssues.length">
+            <td colspan="5" class="empty-state">暂无耗材领用记录</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条保障班组记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -74,12 +113,14 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  SUPPLY_QUOTA_PER_PERSON,
   downloadEntries,
   listEntries,
   moduleMeta,
   runAction as applyAction,
+  teamSupplyIssues,
 } from '@/api/local-service'
-import type { EntryRow } from '@/data/types'
+import type { EntryRow, TeamSupplyIssue } from '@/data/types'
 
 const meta = moduleMeta('team')
 const columns = ["班组编号", "班组名称", "负责区域", "在岗人数", "班次时段", "带班人员", "轮休安排", "班组状态"]
@@ -92,6 +133,8 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const supplyIssues = ref<TeamSupplyIssue[]>([])
+const supplyQuota = SUPPLY_QUOTA_PER_PERSON
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -128,6 +171,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    supplyIssues.value = teamSupplyIssues()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '保障班组列表读取失败'
   }

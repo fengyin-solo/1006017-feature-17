@@ -3,9 +3,20 @@ import type { EntryRow } from './types'
 
 // 本地持久化：数据放在 localStorage 里，刷新、关掉再打开都还在。
 const STORAGE_KEY = 'airport-ground-ops:entries'
+// 数据结构版本：字段或种子结构变了就 +1，旧缓存自动重播种，避免旧占位数据混进新视图。
+const STORAGE_VERSION = 2
+
+type StorageShape = { version: number; rows: Record<string, EntryRow[]> }
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
+}
+
+function persist(rows: Record<string, EntryRow[]>): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const payload: StorageShape = { version: STORAGE_VERSION, rows }
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  }
 }
 
 function readStorage(): Record<string, EntryRow[]> {
@@ -15,14 +26,18 @@ function readStorage(): Record<string, EntryRow[]> {
   }
   const raw = window.localStorage.getItem(STORAGE_KEY)
   if (!raw) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
+    persist(fallback)
     return fallback
   }
   try {
-    const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
-    return { ...fallback, ...parsed }
+    const parsed = JSON.parse(raw) as Partial<StorageShape>
+    if (!parsed || parsed.version !== STORAGE_VERSION || !parsed.rows) {
+      persist(fallback)
+      return fallback
+    }
+    return { ...fallback, ...parsed.rows }
   } catch {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
+    persist(fallback)
     return fallback
   }
 }
@@ -43,9 +58,7 @@ export function listRows(key: string): EntryRow[] {
 export function saveRows(key: string, rows: EntryRow[]): void {
   const next = { ...allRows(), [key]: rows }
   cache = next
-  if (typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
+  persist(next)
 }
 
 export function resetRows(key: string): EntryRow[] {

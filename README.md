@@ -67,5 +67,11 @@ npm run build
   `frontend/src/api/local-service.ts`。
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
-- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。元数据里
+  `enforceSequence: true` 的模块（如客舱清洁）状态只能按 `statuses` 顺序逐段推进，
+  不许跳步、不许回退，终态记录不可再操作。
+- 客舱清洁的「班组完成视图」按清洁班组汇总作业项数、用水量、耗材领用，可下钻到航班明细；
+  耗材领用按 航班号→保障班组 挂接，保障班组页的「耗材领用清单」与该视图读同一个服务函数，
+  两边数字永远一致。领用量超过 在岗人数 × 人均定额（2 套/人）上浮 20% 的核对线时给出提示。
+- 本地缓存带结构版本号，种子结构升级后旧缓存自动重播种。
 - 想回到初始数据：清掉浏览器里 `airport-ground-ops:entries` 这一项，或调用 `resetModule(模块)`。
